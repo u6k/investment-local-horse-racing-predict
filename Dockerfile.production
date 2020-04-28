@@ -1,0 +1,16 @@
+FROM python:3.8
+LABEL maintainer="u6k.apps@gmail.com"
+
+RUN apt-get update && \
+    apt-get -y upgrade && \
+    apt-get clean && \
+    pip install pipenv
+
+COPY . /var/myapp
+WORKDIR /var/myapp
+RUN pipenv install
+
+ENV FLASK_APP investment_local_horse_racing_predict/main.py
+EXPOSE 5000
+
+CMD ["pipenv", "run", "app"]
