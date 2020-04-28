@@ -31,9 +31,7 @@ Dockerを使用します。
 
 ## Other
 
-- ビルド手順
-    - `.travis.yml`を参照してください
-- [[リリース手順]]
+最新の情報は、[Wiki - investment-local-horse-racing-predict - u6k.Redmine](https://redmine.u6k.me/projects/investment-local-horse-racing-predict/wiki/Wiki)を参照してください。
 
 ## Maintainer
 
