@@ -1,3 +1,4 @@
+import warnings
 import logging
 import logging.config
 
@@ -27,6 +28,8 @@ logging.config.dictConfig({
         },
     },
 })
+
+warnings.simplefilter("ignore")
 
 
 def get_logger(name):
