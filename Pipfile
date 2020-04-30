@@ -8,6 +8,10 @@ flake8 = "*"
 autopep8 = "*"
 nose = "*"
 Flask = "*"
+psycopg2 = "*"
+pandas = "*"
+numpy = "*"
+lightgbm = "*"
 
 [requires]
 python_version = "3.8"
