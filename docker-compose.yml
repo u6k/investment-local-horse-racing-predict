@@ -7,5 +7,12 @@ services:
       - ".:/var/myapp"
     environment:
       - "TZ=Asia/Tokyo"
+      - "CRAWLER_DB_HOST=${CRAWLER_DB_HOST}"
+      - "CRAWLER_DB_PORT=${CRAWLER_DB_PORT}"
+      - "CRAWLER_DB_DATABASE=${CRAWLER_DB_DATABASE}"
+      - "CRAWLER_DB_USERNAME=${CRAWLER_DB_USERNAME}"
+      - "CRAWLER_DB_PASSWORD=${CRAWLER_DB_PASSWORD}"
+      - "RESULT_PREDICT_MODEL_URL=${RESULT_PREDICT_MODEL_URL}"
+      - "VOTE_PREDICT_MODEL_URL=${VOTE_PREDICT_MODEL_URL}"
     ports:
       - "5000:5000"
