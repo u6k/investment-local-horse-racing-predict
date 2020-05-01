@@ -47,11 +47,13 @@ def predict():
     df = calc_horse_jockey_trainer_score(df)
     df = merge_past_race(df)
     df, df_data, df_query, df_label = split_data_query_label(df, race_id)
-    df_result = predict_result(df, df_data)
+    df_result, predict_algorithm = predict_result(df, df_data)
     horse_number = df_result.query("pred_result==1")["horse_number"].values[0]
-    vote_cost = calc_vote_cost(asset, vote_cost_limit, race_id, horse_number)
+    vote_cost, vote_parameters = calc_vote_cost(asset, vote_cost_limit, race_id, horse_number)
+    odds_win = vote_parameters["parameters"]["odds_win"]
+    vote_parameters["predict_algorithm"] = predict_algorithm
 
-    return jsonify({"race_id": race_id, "horse_number": int(horse_number), "vote_cost": vote_cost})
+    return jsonify({"race_id": race_id, "horse_number": int(horse_number), "vote_cost": vote_cost, "odds_win": odds_win, "parameters": vote_parameters})
 
 
 def join_crawled_data(race_id):
@@ -66,8 +68,7 @@ def join_crawled_data(race_id):
 
         df = pd.read_sql(sql=sql, con=db_conn)
         end_date = df["start_datetime"].values[0]
-        # TODO: start_date = end_date - np.timedelta64(365, "D")
-        start_date = end_date - np.timedelta64(200, "D")
+        start_date = end_date - np.timedelta64(365, "D")
         logger.debug(f"#join_crawled_data: start_date={start_date}, end_date={end_date}")
 
         sql = f"""select
@@ -323,7 +324,7 @@ def predict_result(df, df_data):
 
     logger.debug(f"#predict_result: result=1 record is {df_tmp.query('pred_result==1')}")
 
-    return df_tmp
+    return df_tmp, model_data["algorithm"]
 
 
 def calc_vote_cost(asset, vote_cost_limit, race_id, horse_number):
@@ -363,6 +364,9 @@ def calc_vote_cost(asset, vote_cost_limit, race_id, horse_number):
     else:
         vote_cost = 0
 
-    logger.debug(f"#calc_vote_cost: kelly={kelly}, vote_cost={vote_cost}")
+    vote_parameters["parameters"]["odds_win"] = odds_win
+    vote_parameters["parameters"]["kelly"] = kelly
 
-    return vote_cost
+    logger.debug(f"#calc_vote_cost: vote_cost={vote_cost}, vote_parameters={vote_parameters}")
+
+    return vote_cost, vote_parameters
