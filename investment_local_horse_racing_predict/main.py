@@ -9,7 +9,11 @@ import pickle
 import urllib.request
 import json
 import base64
+from queue import Queue
+import functools
+import time
 
+from investment_local_horse_racing_predict import VERSION
 from investment_local_horse_racing_predict.app_logging import get_logger
 
 
@@ -25,35 +29,66 @@ pd.options.display.width = 10000
 app = Flask(__name__)
 
 
+singleQueue = Queue(maxsize=1)
+
+
+def multiple_control(q):
+    def _multiple_control(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            q.put(time.time())
+            logger.debug("#multiple_control: start: critical zone")
+            result = func(*args, **kwargs)
+            logger.debug("#multiple_control: end: critical zone")
+            q.get()
+            q.task_done()
+            return result
+        return wrapper
+    return _multiple_control
+
+
 @app.route("/api/health")
 def health():
     logger.info("#health: start")
+    try:
 
-    return "ok"
+        result = {"version": VERSION}
+
+        return result
+
+    except Exception:
+        logger.exception("error")
+        return "error", 500
 
 
 @app.route("/api/predict", methods=["POST"])
+@multiple_control(singleQueue)
 def predict():
     logger.info("#predict: start")
+    try:
 
-    args = request.get_json()
-    logger.info(f"#predict: args={args}")
+        args = request.get_json()
+        logger.info(f"#predict: args={args}")
 
-    race_id = args.get("race_id")
-    asset = args.get("asset")
-    vote_cost_limit = args.get("vote_cost_limit", 10000)
+        race_id = args.get("race_id")
+        asset = args.get("asset")
+        vote_cost_limit = args.get("vote_cost_limit", 10000)
 
-    df = join_crawled_data(race_id)
-    df = calc_horse_jockey_trainer_score(df)
-    df = merge_past_race(df)
-    df, df_data, df_query, df_label = split_data_query_label(df, race_id)
-    df_result, predict_algorithm = predict_result(df, df_data)
-    horse_number = df_result.query("pred_result==1")["horse_number"].values[0]
-    vote_cost, vote_parameters = calc_vote_cost(asset, vote_cost_limit, race_id, horse_number)
-    odds_win = vote_parameters["parameters"]["odds_win"]
-    vote_parameters["predict_algorithm"] = predict_algorithm
+        df = join_crawled_data(race_id)
+        df = calc_horse_jockey_trainer_score(df)
+        df = merge_past_race(df)
+        df, df_data, df_query, df_label = split_data_query_label(df, race_id)
+        df_result, predict_algorithm = predict_result(df, df_data)
+        horse_number = df_result.query("pred_result==1")["horse_number"].values[0]
+        vote_cost, vote_parameters = calc_vote_cost(asset, vote_cost_limit, race_id, horse_number)
+        odds_win = vote_parameters["parameters"]["odds_win"]
+        vote_parameters["predict_algorithm"] = predict_algorithm
 
-    return jsonify({"race_id": race_id, "horse_number": int(horse_number), "vote_cost": vote_cost, "odds_win": odds_win, "parameters": vote_parameters})
+        return jsonify({"race_id": race_id, "horse_number": int(horse_number), "vote_cost": vote_cost, "odds_win": odds_win, "parameters": vote_parameters})
+
+    except Exception:
+        logger.exception("error")
+        return "error", 500
 
 
 def join_crawled_data(race_id):
