@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - [#8349: 排他制御して、処理が1本しか実行されないようにする](https://redmine.u6k.me/issues/8349)
+- [#8365: 予測に使用したデータを解析するためストレージに保存する](https://redmine.u6k.me/issues/8365)
 
 ### Changed
 - [#8384: ヘルスチェックでいろいろ返す](https://redmine.u6k.me/issues/8384)
