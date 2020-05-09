@@ -11,8 +11,9 @@ COPY Pipfile .
 COPY Pipfile.lock .
 RUN pipenv install
 
+VOLUME /var/dataframe
 VOLUME /var/myapp
-ENV FLASK_APP investment_local_horse_racing_predict/main.py
+ENV FLASK_APP investment_local_horse_racing_predict/flask.py
 EXPOSE 5000
 
 CMD ["pipenv", "run", "app"]

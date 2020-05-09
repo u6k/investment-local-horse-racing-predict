@@ -3,45 +3,20 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 import math
-from flask import Flask, jsonify, request
-import psycopg2
 import pickle
 import urllib.request
 import json
 import base64
 
 from investment_local_horse_racing_predict.app_logging import get_logger
+from investment_local_horse_racing_predict import flask
 
 
-# Logger settings
 logger = get_logger(__name__)
 
-# Pandas settings
-pd.options.display.max_columns = None
-pd.options.display.show_dimensions = True
-pd.options.display.width = 10000
 
-
-app = Flask(__name__)
-
-
-@app.route("/api/health")
-def health():
-    logger.info("#health: start")
-
-    return "ok"
-
-
-@app.route("/api/predict", methods=["POST"])
-def predict():
-    logger.info("#predict: start")
-
-    args = request.get_json()
-    logger.info(f"#predict: args={args}")
-
-    race_id = args.get("race_id")
-    asset = args.get("asset")
-    vote_cost_limit = args.get("vote_cost_limit", 10000)
+def predict(race_id, asset, vote_cost_limit):
+    logger.info(f"#predict: start: race_id={race_id}, asset={asset}, vote_cost_limit={vote_cost_limit}")
 
     df = join_crawled_data(race_id)
     df = calc_horse_jockey_trainer_score(df)
@@ -53,7 +28,20 @@ def predict():
     odds_win = vote_parameters["parameters"]["odds_win"]
     vote_parameters["predict_algorithm"] = predict_algorithm
 
-    return jsonify({"race_id": race_id, "horse_number": int(horse_number), "vote_cost": vote_cost, "odds_win": odds_win, "parameters": vote_parameters})
+    result = {
+        "race_id": race_id,
+        "horse_number": int(horse_number),
+        "vote_cost": vote_cost,
+        "odds_win": odds_win,
+        "parameters": vote_parameters}
+    logger.debug(f"#predict: result={result}")
+
+    logger.debug(f"#predict: saving csv...")
+    df.to_csv(f"/var/dataframe/df.{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv")
+    df_result.to_csv(f"/var/dataframe/result.{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv")
+    logger.debug(f"#predict: saved")
+
+    return result
 
 
 def join_crawled_data(race_id):
@@ -61,9 +49,7 @@ def join_crawled_data(race_id):
 
     logger.debug("#join_crawled_data: read sql")
 
-    with psycopg2.connect(host=os.getenv("CRAWLER_DB_HOST"), port=os.getenv("CRAWLER_DB_PORT"), dbname=os.getenv("CRAWLER_DB_DATABASE"), user=os.getenv("CRAWLER_DB_USERNAME"), password=os.getenv("CRAWLER_DB_PASSWORD")) as db_conn:
-        db_conn.set_client_encoding("utf-8")
-
+    with flask.get_crawler_db() as db_conn:
         sql = f"select start_datetime from race_info where race_id = '{race_id}'"
 
         df = pd.read_sql(sql=sql, con=db_conn)
@@ -133,12 +119,18 @@ def join_crawled_data(race_id):
         "佐賀.*": 9,
         "姫路.*": 10,
         "帯広.*": 11,
+        "福山.*": 12,
+        "荒尾.*": 13,
+        "札幌.*": 14,
+        "旭川.*": 15,
+        "北見.*": 16,
+        "岩見沢.*": 17,
     }}, regex=True, inplace=True)
 
     df.replace({
         "weather": {'晴れ': 1, '雨': 2, '小雨': 2, 'くもり': 3, '雪': 4, 'かみなり': 5},
         "course_type": {'ダ': 1, '芝': 2},
-        "coat_color": {'栗毛': 1, '鹿毛': 2, '青鹿毛': 3, '黒鹿毛': 4, '芦毛': 5, '栃栗毛': 6, '青毛': 7, '青駁毛': 8, '鹿駁毛': 9, '白毛': 10, '鹿粕毛': 11, '栗駁毛': 12},
+        "coat_color": {'栗毛': 1, '鹿毛': 2, '青鹿毛': 3, '黒鹿毛': 4, '芦毛': 5, '栃栗毛': 6, '青毛': 7, '青駁毛': 8, '鹿駁毛': 9, '白毛': 10, '鹿粕毛': 11, '栗駁毛': 12, '栗粕毛': 13, '駁栗毛': 14},
         "gender_horse": {'牡': 1, '牝': 2, 'セン': 3},
         "gender_jockey": {'男': 1, '女': 2},
         "gender_trainer": {'男': 1, '女': 2},
@@ -309,10 +301,9 @@ def predict_result(df, df_data):
 
     logger.debug("#predict_result: load model")
 
-    with urllib.request.urlopen(os.getenv("RESULT_PREDICT_MODEL_URL")) as response:
-        model_data = json.load(response)
-        lgb_model = pickle.loads(base64.b64decode(model_data["model"].encode()))
-        logger.debug(f"#predict_result: algorithm={model_data['algorithm']}")
+    model_data = load_json_from_url(os.getenv("RESULT_PREDICT_MODEL_URL"))
+    lgb_model = pickle.loads(base64.b64decode(model_data["model"].encode()))
+    logger.debug(f"#predict_result: algorithm={model_data['algorithm']}")
 
     logger.debug("#predict_result: predict")
 
@@ -332,18 +323,15 @@ def calc_vote_cost(asset, vote_cost_limit, race_id, horse_number):
 
     logger.debug("#calc_vote_cost: load parameters")
 
-    with urllib.request.urlopen(os.getenv("VOTE_PREDICT_MODEL_URL")) as response:
-        vote_parameters = json.load(response)
-        logger.debug(f"#calc_vote_cost: vote_parameters={vote_parameters}")
+    vote_parameters = load_json_from_url(os.getenv("VOTE_PREDICT_MODEL_URL"))
+    logger.debug(f"#calc_vote_cost: vote_parameters={vote_parameters}")
 
-        hit_rate = vote_parameters["parameters"]["hit_rate"]
-        kelly_coefficient = vote_parameters["parameters"]["kelly_coefficient"]
+    hit_rate = vote_parameters["parameters"]["hit_rate"]
+    kelly_coefficient = vote_parameters["parameters"]["kelly_coefficient"]
 
     logger.debug("#calc_vote_cost: load odds")
 
-    with psycopg2.connect(host=os.getenv("CRAWLER_DB_HOST"), port=os.getenv("CRAWLER_DB_PORT"), dbname=os.getenv("CRAWLER_DB_DATABASE"), user=os.getenv("CRAWLER_DB_USERNAME"), password=os.getenv("CRAWLER_DB_PASSWORD")) as db_conn:
-        db_conn.set_client_encoding("utf-8")
-
+    with flask.get_crawler_db() as db_conn:
         sql = f"select odds_win from odds_win where race_id = '{race_id}' and horse_number = '{horse_number}'"
 
         df = pd.read_sql(sql=sql, con=db_conn)
@@ -370,3 +358,10 @@ def calc_vote_cost(asset, vote_cost_limit, race_id, horse_number):
     logger.debug(f"#calc_vote_cost: vote_cost={vote_cost}, vote_parameters={vote_parameters}")
 
     return vote_cost, vote_parameters
+
+
+def load_json_from_url(url):
+    with urllib.request.urlopen(url) as response:
+        data = json.load(response)
+
+    return data
