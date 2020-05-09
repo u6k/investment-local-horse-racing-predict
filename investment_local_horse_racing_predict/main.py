@@ -36,6 +36,11 @@ def predict(race_id, asset, vote_cost_limit):
         "parameters": vote_parameters}
     logger.debug(f"#predict: result={result}")
 
+    logger.debug(f"#predict: saving csv...")
+    df.to_csv(f"/var/dataframe/df.{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv")
+    df_result.to_csv(f"/var/dataframe/result.{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv")
+    logger.debug(f"#predict: saved")
+
     return result
 
 
