@@ -3,92 +3,40 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 import math
-from flask import Flask, jsonify, request
-import psycopg2
 import pickle
 import urllib.request
 import json
 import base64
-from queue import Queue
-import functools
-import time
 
-from investment_local_horse_racing_predict import VERSION
 from investment_local_horse_racing_predict.app_logging import get_logger
+from investment_local_horse_racing_predict import flask
 
 
-# Logger settings
 logger = get_logger(__name__)
 
-# Pandas settings
-pd.options.display.max_columns = None
-pd.options.display.show_dimensions = True
-pd.options.display.width = 10000
 
+def predict(race_id, asset, vote_cost_limit):
+    logger.info(f"#predict: start: race_id={race_id}, asset={asset}, vote_cost_limit={vote_cost_limit}")
 
-app = Flask(__name__)
+    df = join_crawled_data(race_id)
+    df = calc_horse_jockey_trainer_score(df)
+    df = merge_past_race(df)
+    df, df_data, df_query, df_label = split_data_query_label(df, race_id)
+    df_result, predict_algorithm = predict_result(df, df_data)
+    horse_number = df_result.query("pred_result==1")["horse_number"].values[0]
+    vote_cost, vote_parameters = calc_vote_cost(asset, vote_cost_limit, race_id, horse_number)
+    odds_win = vote_parameters["parameters"]["odds_win"]
+    vote_parameters["predict_algorithm"] = predict_algorithm
 
+    result = {
+        "race_id": race_id,
+        "horse_number": int(horse_number),
+        "vote_cost": vote_cost,
+        "odds_win": odds_win,
+        "parameters": vote_parameters}
+    logger.debug(f"#predict: result={result}")
 
-singleQueue = Queue(maxsize=1)
-
-
-def multiple_control(q):
-    def _multiple_control(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            q.put(time.time())
-            logger.debug("#multiple_control: start: critical zone")
-            result = func(*args, **kwargs)
-            logger.debug("#multiple_control: end: critical zone")
-            q.get()
-            q.task_done()
-            return result
-        return wrapper
-    return _multiple_control
-
-
-@app.route("/api/health")
-def health():
-    logger.info("#health: start")
-    try:
-
-        result = {"version": VERSION}
-
-        return result
-
-    except Exception:
-        logger.exception("error")
-        return "error", 500
-
-
-@app.route("/api/predict", methods=["POST"])
-@multiple_control(singleQueue)
-def predict():
-    logger.info("#predict: start")
-    try:
-
-        args = request.get_json()
-        logger.info(f"#predict: args={args}")
-
-        race_id = args.get("race_id")
-        asset = args.get("asset")
-        vote_cost_limit = args.get("vote_cost_limit", 10000)
-
-        df = join_crawled_data(race_id)
-        df = calc_horse_jockey_trainer_score(df)
-        df = merge_past_race(df)
-        df, df_data, df_query, df_label = split_data_query_label(df, race_id)
-        df_result, predict_algorithm = predict_result(df, df_data)
-        horse_number = df_result.query("pred_result==1")["horse_number"].values[0]
-        vote_cost, vote_parameters = calc_vote_cost(asset, vote_cost_limit, race_id, horse_number)
-        odds_win = vote_parameters["parameters"]["odds_win"]
-        vote_parameters["predict_algorithm"] = predict_algorithm
-
-        return jsonify({"race_id": race_id, "horse_number": int(horse_number), "vote_cost": vote_cost, "odds_win": odds_win, "parameters": vote_parameters})
-
-    except Exception:
-        logger.exception("error")
-        return "error", 500
+    return result
 
 
 def join_crawled_data(race_id):
@@ -96,9 +44,7 @@ def join_crawled_data(race_id):
 
     logger.debug("#join_crawled_data: read sql")
 
-    with psycopg2.connect(host=os.getenv("CRAWLER_DB_HOST"), port=os.getenv("CRAWLER_DB_PORT"), dbname=os.getenv("CRAWLER_DB_DATABASE"), user=os.getenv("CRAWLER_DB_USERNAME"), password=os.getenv("CRAWLER_DB_PASSWORD")) as db_conn:
-        db_conn.set_client_encoding("utf-8")
-
+    with flask.get_crawler_db() as db_conn:
         sql = f"select start_datetime from race_info where race_id = '{race_id}'"
 
         df = pd.read_sql(sql=sql, con=db_conn)
@@ -350,10 +296,9 @@ def predict_result(df, df_data):
 
     logger.debug("#predict_result: load model")
 
-    with urllib.request.urlopen(os.getenv("RESULT_PREDICT_MODEL_URL")) as response:
-        model_data = json.load(response)
-        lgb_model = pickle.loads(base64.b64decode(model_data["model"].encode()))
-        logger.debug(f"#predict_result: algorithm={model_data['algorithm']}")
+    model_data = load_json_from_url(os.getenv("RESULT_PREDICT_MODEL_URL"))
+    lgb_model = pickle.loads(base64.b64decode(model_data["model"].encode()))
+    logger.debug(f"#predict_result: algorithm={model_data['algorithm']}")
 
     logger.debug("#predict_result: predict")
 
@@ -373,18 +318,15 @@ def calc_vote_cost(asset, vote_cost_limit, race_id, horse_number):
 
     logger.debug("#calc_vote_cost: load parameters")
 
-    with urllib.request.urlopen(os.getenv("VOTE_PREDICT_MODEL_URL")) as response:
-        vote_parameters = json.load(response)
-        logger.debug(f"#calc_vote_cost: vote_parameters={vote_parameters}")
+    vote_parameters = load_json_from_url(os.getenv("VOTE_PREDICT_MODEL_URL"))
+    logger.debug(f"#calc_vote_cost: vote_parameters={vote_parameters}")
 
-        hit_rate = vote_parameters["parameters"]["hit_rate"]
-        kelly_coefficient = vote_parameters["parameters"]["kelly_coefficient"]
+    hit_rate = vote_parameters["parameters"]["hit_rate"]
+    kelly_coefficient = vote_parameters["parameters"]["kelly_coefficient"]
 
     logger.debug("#calc_vote_cost: load odds")
 
-    with psycopg2.connect(host=os.getenv("CRAWLER_DB_HOST"), port=os.getenv("CRAWLER_DB_PORT"), dbname=os.getenv("CRAWLER_DB_DATABASE"), user=os.getenv("CRAWLER_DB_USERNAME"), password=os.getenv("CRAWLER_DB_PASSWORD")) as db_conn:
-        db_conn.set_client_encoding("utf-8")
-
+    with flask.get_crawler_db() as db_conn:
         sql = f"select odds_win from odds_win where race_id = '{race_id}' and horse_number = '{horse_number}'"
 
         df = pd.read_sql(sql=sql, con=db_conn)
@@ -411,3 +353,10 @@ def calc_vote_cost(asset, vote_cost_limit, race_id, horse_number):
     logger.debug(f"#calc_vote_cost: vote_cost={vote_cost}, vote_parameters={vote_parameters}")
 
     return vote_cost, vote_parameters
+
+
+def load_json_from_url(url):
+    with urllib.request.urlopen(url) as response:
+        data = json.load(response)
+
+    return data
