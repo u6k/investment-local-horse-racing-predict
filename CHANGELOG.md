@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- [#8260: 入力データ生成処理を見直す](https://redmine.u6k.me/issues/8260)
+
 ## [1.2.0] - 2020-05-09
 ### Fixed
 - [#8383: カテゴリー変数変換が不足している](https://redmine.u6k.me/issues/8383)
