@@ -173,45 +173,45 @@ def calc_horse_jockey_trainer_score(df):
     logger.debug("#calc_horse_jockey_trainer_score: calc horse score")
 
     df_score_horse = df_score[["race_id", "start_datetime", "horse_id", "score"]].sort_values(["horse_id", "start_datetime"])
-    df_score_tmp = df_score_horse.groupby("horse_id").rolling(10000, min_periods=1)[["score"]].sum()
-    df_score_horse["total_score"] = df_score_tmp["score"].values
-    df_score_tmp = df_score_horse.shift(1)
-    df_score_horse["horse_id_1"] = df_score_tmp["horse_id"].values
-    df_score_horse["total_score"] = df_score_tmp["total_score"].values
-    df_score_horse.loc[df_score_horse["horse_id"] != df_score_horse["horse_id_1"], "total_score"] = 0.0
-    df_score_horse.drop(["horse_id_1"], axis=1, inplace=True)
+    df_score_horse = df_score_horse.groupby(["race_id", "start_datetime", "horse_id"])[["score"]].sum()
+    df_score_horse = df_score_horse.groupby("horse_id").rolling(10000, min_periods=1)[["score"]].sum()
+    df_score_horse.index = df_score_horse.index.droplevel(0)
+    df_score_horse.reset_index(inplace=True)
+    df_score_horse = pd.merge(df_score_horse, df_score_horse[["horse_id", "score"]].shift(1), left_index=True, right_index=True)
+    df_score_horse.loc[df_score_horse["horse_id_x"] != df_score_horse["horse_id_y"], "score_y"] = 0.0
+    df_score_horse.drop(["score_x", "horse_id_y"], axis=1, inplace=True)
+    df_score_horse.rename(columns={"horse_id_x": "horse_id", "score_y": "horse_score"}, inplace=True)
 
     logger.debug("#calc_horse_jockey_trainer_score: calc jockey score")
 
     df_score_jockey = df_score[["race_id", "start_datetime", "jockey_id", "score"]].sort_values(["jockey_id", "start_datetime"])
-    df_score_tmp = df_score_jockey.groupby("jockey_id").rolling(10000, min_periods=1)[["score"]].sum()
-    df_score_jockey["total_score"] = df_score_tmp["score"].values
-    df_score_tmp = df_score_jockey.shift(1)
-    df_score_jockey["jockey_id_1"] = df_score_tmp["jockey_id"].values
-    df_score_jockey["total_score"] = df_score_tmp["total_score"].values
-    df_score_jockey.loc[df_score_jockey["jockey_id"] != df_score_jockey["jockey_id_1"], "total_score"] = 0.0
-    df_score_jockey.drop(["jockey_id_1"], axis=1, inplace=True)
+    df_score_jockey = df_score_jockey.groupby(["race_id", "start_datetime", "jockey_id"])[["score"]].sum()
+    df_score_jockey = df_score_jockey.groupby("jockey_id").rolling(10000, min_periods=1)[["score"]].sum()
+    df_score_jockey.index = df_score_jockey.index.droplevel(0)
+    df_score_jockey.reset_index(inplace=True)
+    df_score_jockey = pd.merge(df_score_jockey, df_score_jockey[["jockey_id", "score"]].shift(1), left_index=True, right_index=True)
+    df_score_jockey.loc[df_score_jockey["jockey_id_x"] != df_score_jockey["jockey_id_y"], "score_y"] = 0.0
+    df_score_jockey.drop(["score_x", "jockey_id_y"], axis=1, inplace=True)
+    df_score_jockey.rename(columns={"jockey_id_x": "jockey_id", "score_y": "jockey_score"}, inplace=True)
 
     logger.debug("#calc_horse_jockey_trainer_score: calc trainer score")
 
     df_score_trainer = df_score[["race_id", "start_datetime", "trainer_id", "score"]].sort_values(["trainer_id", "start_datetime"])
-    df_score_tmp = df_score_trainer.groupby(["race_id", "trainer_id"])[["score"]].sum()
-    df_score_trainer = pd.merge(df_score_trainer[["race_id", "start_datetime", "trainer_id"]], df_score_tmp, on=["race_id", "trainer_id"], how="left")
-    df_score_tmp = df_score_trainer.groupby("trainer_id").rolling(10000, min_periods=1)[["score"]].sum()
-    df_score_trainer["total_score"] = df_score_tmp["score"].values
-    df_score_tmp = df_score_trainer.shift(1)
-    df_score_trainer["trainer_id_1"] = df_score_tmp["trainer_id"].values
-    df_score_trainer["total_score"] = df_score_tmp["total_score"].values
-    df_score_trainer.loc[df_score_trainer["trainer_id"] != df_score_trainer["trainer_id_1"], "total_score"] = 0.0
-    df_score_trainer.drop(["trainer_id_1"], axis=1, inplace=True)
+    df_score_trainer = df_score_trainer.groupby(["race_id", "start_datetime", "trainer_id"])[["score"]].sum()
+    df_score_trainer = df_score_trainer.groupby("trainer_id").rolling(10000, min_periods=1)[["score"]].sum()
+    df_score_trainer.index = df_score_trainer.index.droplevel(0)
+    df_score_trainer.reset_index(inplace=True)
+    df_score_trainer = pd.merge(df_score_trainer, df_score_trainer[["trainer_id", "score"]].shift(1), left_index=True, right_index=True)
+    df_score_trainer.loc[df_score_trainer["trainer_id_x"] != df_score_trainer["trainer_id_y"], "score_y"] = 0.0
+    df_score_trainer.drop(["score_x", "trainer_id_y"], axis=1, inplace=True)
+    df_score_trainer.rename(columns={"trainer_id_x": "trainer_id", "score_y": "trainer_score"}, inplace=True)
+
+    logger.debug("#calc_horse_jockey_trainer_score: merge horse/jockey/trainer score")
 
     df_tmp = df.copy()
-    df_tmp = pd.merge(df_tmp, df_score_horse[["race_id", "horse_id", "total_score"]], on=["race_id", "horse_id"], how="left")
-    df_tmp.rename(columns={"total_score": "horse_score"}, inplace=True)
-    df_tmp = pd.merge(df_tmp, df_score_jockey[["race_id", "jockey_id", "total_score"]], on=["race_id", "jockey_id"], how="left")
-    df_tmp.rename(columns={"total_score": "jockey_score"}, inplace=True)
-    df_tmp = pd.merge(df_tmp, df_score_trainer[["race_id", "trainer_id", "total_score"]], on=["race_id", "trainer_id"], how="left")
-    df_tmp.rename(columns={"total_score": "trainer_score"}, inplace=True)
+    df_tmp = pd.merge(df_tmp, df_score_horse[["race_id", "horse_id", "horse_score"]], on=["race_id", "horse_id"], how="left")
+    df_tmp = pd.merge(df_tmp, df_score_jockey[["race_id", "jockey_id", "jockey_score"]], on=["race_id", "jockey_id"], how="left")
+    df_tmp = pd.merge(df_tmp, df_score_trainer[["race_id", "trainer_id", "trainer_score"]], on=["race_id", "trainer_id"], how="left")
 
     return df_tmp
 
@@ -219,12 +219,13 @@ def calc_horse_jockey_trainer_score(df):
 def merge_past_race(df):
     logger.info("#merge_past_race: start")
 
-    df_all = df.copy()
-
     logger.debug("#merge_past_race: merge")
 
+    df_all = df.sort_values(["horse_id", "start_datetime"]).reset_index()
+    df_tmp = df_all.copy()
+
     for shift_i in range(1, 4):
-        df_all = pd.merge(df_all, df.shift(shift_i), left_index=True, right_index=True, suffixes=("", f"_{shift_i}"))
+        df_all = pd.merge(df_all, df_tmp.shift(shift_i), left_index=True, right_index=True, suffixes=("", f"_{shift_i}"))
 
     logger.debug("#merge_past_race: set none")
 
